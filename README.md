@@ -93,16 +93,10 @@ Claude Code writes session transcripts to `~/.claude/projects/<cwd-slug>/<sessio
 - parallel tool calls in one message fan out visibly from the same parent
 - subagent runs (sidechains) hang off the Task call that spawned them
 
-## Repo layout
+## Contributing
 
-```
-server.py                 HTTP + SSE server, Python standard library only
-viewer/index.html         the renderer, a single self-contained page with no dependencies
-capture/claude_code.py    Claude Code transcript to trail events
-samples/demo.trail.jsonl  hand-written branching session used by the demo
-trails/                   your captured sessions live here
-```
+Capture layers for other agent frameworks are the most wanted contribution: one small script per framework makes the same viewer work for every agent tool. See [CONTRIBUTING.md](CONTRIBUTING.md) for the project layout, how to build a capture layer, and how to test changes. This project follows a [Code of Conduct](CODE_OF_CONDUCT.md).
 
-## Adding a capture layer for another framework
+## License
 
-Emit the schema above and append to a file in `trails/`. That is the whole integration. For most frameworks it is about 50 lines: subscribe to whatever event stream exists (callbacks, a log tail, OTel spans), map each event to a node with a `parent_id`, and keep labels short. The full payload goes in `detail`.
+[MIT](LICENSE)
