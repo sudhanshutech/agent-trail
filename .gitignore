@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+
+# captured sessions are personal data; only the bundled demo is committed
+trails/*
+!trails/demo.trail.jsonl
