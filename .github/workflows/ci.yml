@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.8", "3.11", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Compile Python
+        run: python -m py_compile server.py capture/claude_code.py tests/validate_trail.py tests/capture_smoke.py
+
+      - name: Validate bundled trail data against the schema
+        run: python tests/validate_trail.py samples/demo.trail.jsonl trails/demo.trail.jsonl
+
+      - name: Capture layer smoke test
+        run: python tests/capture_smoke.py
+
+      - name: Viewer JS syntax check
+        run: |
+          python - <<'EOF'
+          import re
+          html = open("viewer/index.html").read()
+          js = re.search(r"<script>(.*)</script>", html, re.S).group(1)
+          open("/tmp/viewer.js", "w").write(js)
+          EOF
+          node --check /tmp/viewer.js
+
+  browser-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install test-only dependencies
+        run: npm init -y >/dev/null && npm i --no-audit --no-fund puppeteer-core @puppeteer/browsers
+
+      - name: Install headless Chrome
+        run: |
+          OUT=$(npx @puppeteer/browsers install chrome-headless-shell@stable --path "$HOME/.chrome-ci" | tail -1)
+          echo "CHROME_PATH=${OUT##* }" >> "$GITHUB_ENV"
+
+      - name: Render the demo trail in a real browser
+        run: node tests/browser_smoke.mjs

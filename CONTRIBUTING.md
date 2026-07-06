@@ -51,7 +51,23 @@ Put the script in `capture/<framework>.py` (or another language if the framework
 
 ## Testing your changes
 
-There is no test suite yet (adding one would be a great contribution). Before opening a PR, please verify by hand:
+CI runs these checks on every PR, and you can run them locally first:
+
+```bash
+# schema validation of the bundled trail data
+python3 tests/validate_trail.py samples/demo.trail.jsonl trails/demo.trail.jsonl
+
+# capture layer smoke test against the fixture transcript
+python3 tests/capture_smoke.py
+
+# render the demo trail in a real headless browser and assert it draws
+# (test-only dependency, never shipped: npm i puppeteer-core)
+CHROME_PATH=/path/to/chrome node tests/browser_smoke.mjs
+```
+
+If you add a capture layer, add a small sanitized fixture under `tests/fixtures/` and a smoke test like `tests/capture_smoke.py`, and run your new trail file through `tests/validate_trail.py`.
+
+Please also verify by hand before opening a PR:
 
 1. `python3 server.py` starts cleanly and the **demo** trail renders with a grayed-out dead branch and a pivot badge.
 2. Replay works: scrub, step, and play at a couple of speeds.

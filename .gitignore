@@ -1,6 +1,11 @@
 __pycache__/
 *.pyc
 
+# test-only npm artifacts (puppeteer-core for tests/browser_smoke.mjs)
+node_modules/
+package.json
+package-lock.json
+
 # captured sessions are personal data; only the bundled demo is committed
 trails/*
 !trails/demo.trail.jsonl

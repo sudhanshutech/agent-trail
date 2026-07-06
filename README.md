@@ -1,5 +1,7 @@
 # agent-trail
 
+[![CI](https://github.com/sudhanshutech/agent-trail/actions/workflows/ci.yml/badge.svg)](https://github.com/sudhanshutech/agent-trail/actions/workflows/ci.yml)
+
 **A live, branching visualization of an agent's reasoning.**
 
 When an agentic coding session runs (Claude Code, or any tool-calling agent), all you normally get is a scrolling wall of text. Debugging an agent means re-reading that wall from the top, hoping to spot the moment it went wrong.
