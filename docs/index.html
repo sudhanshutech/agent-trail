@@ -1,0 +1,632 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Agent Trail</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --bg: #080d13; --panel: rgba(13, 19, 27, .78); --panel2: rgba(28, 38, 50, .6);
+    --border: rgba(120, 160, 200, .14); --text: #dbe4ec; --dim: #7d8b99; --faint: #46535f;
+    --amber: #e8b04b; --violet: #b58cf0; --blue: #6cb2f5; --teal: #45c4a4;
+    --sky: #7fd0e8; --orange: #f0954f; --green: #58c470; --red: #e86a6a;
+    --gray: #8a97a3;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { height: 100%; overflow: hidden; }
+  body {
+    background: var(--bg); color: var(--text);
+    font: 13px/1.45 ui-sans-serif, system-ui, sans-serif;
+    display: grid; grid-template-columns: 240px 1fr; grid-template-rows: 1fr auto;
+    grid-template-areas: "side main" "side controls";
+  }
+  /* ---------- sidebar ---------- */
+  #sidebar { grid-area: side; background: var(--panel); backdrop-filter: blur(10px);
+    border-right: 1px solid var(--border); display: flex; flex-direction: column; min-height: 0; }
+  #sidebar h1 { font-size: 14px; padding: 14px 14px 4px; letter-spacing: .4px; }
+  #sidebar h1 span { color: var(--teal); text-shadow: 0 0 8px var(--teal); }
+  #sidebar .sub { padding: 0 14px 10px; color: var(--dim); font-size: 11px;
+    border-bottom: 1px solid var(--border); }
+  #sessions { overflow-y: auto; flex: 1; padding: 6px; }
+  .sess { padding: 8px 9px; border-radius: 9px; cursor: pointer; margin-bottom: 2px;
+    border: 1px solid transparent; transition: background .2s, border-color .2s; }
+  .sess:hover { background: var(--panel2); }
+  .sess.sel { background: var(--panel2); border-color: var(--border); }
+  .sess .name { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sess .meta { color: var(--dim); font-size: 10.5px; margin-top: 2px; display: flex; gap: 6px; align-items: center; }
+  .livedot { width: 7px; height: 7px; border-radius: 50%; background: var(--green);
+    box-shadow: 0 0 6px var(--green); display: inline-block; animation: pulse 1.4s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: .3; } }
+  #legend { border-top: 1px solid var(--border); padding: 10px 14px; font-size: 10.5px;
+    color: var(--dim); display: grid; grid-template-columns: 1fr 1fr; gap: 3px 10px; }
+  #legend i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 6px;
+    box-shadow: 0 0 5px currentColor; }
+  /* ---------- main canvas: night forest atmosphere ---------- */
+  #main { grid-area: main; position: relative; min-width: 0; min-height: 0; overflow: hidden;
+    background:
+      radial-gradient(1000px 700px at 75% -10%, rgba(69, 196, 164, .07), transparent 60%),
+      radial-gradient(900px 700px at 10% 110%, rgba(181, 140, 240, .06), transparent 60%),
+      radial-gradient(700px 500px at 45% 45%, rgba(108, 178, 245, .04), transparent 65%),
+      var(--bg); }
+  #main::after { /* vignette depth fog */
+    content: ""; position: absolute; inset: 0; pointer-events: none;
+    background: radial-gradient(120% 90% at 50% 45%, transparent 55%, rgba(3, 6, 10, .65) 100%); }
+  .firefly { position: absolute; width: 3px; height: 3px; border-radius: 50%;
+    background: radial-gradient(circle, rgba(200, 255, 230, .9), transparent 70%);
+    filter: blur(.5px); pointer-events: none; animation: drift linear infinite alternate; }
+  @keyframes drift {
+    from { transform: translate(0, 0); opacity: .05; }
+    30%  { opacity: .35; }
+    to   { transform: translate(40px, -60px); opacity: .08; }
+  }
+  #canvas { position: relative; width: 100%; height: 100%; cursor: grab; display: block; }
+  #canvas.panning { cursor: grabbing; }
+  #empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    color: var(--faint); font-size: 14px; pointer-events: none; text-align: center; }
+  #livebadge { position: absolute; top: 12px; right: 14px; background: rgba(20, 50, 31, .7);
+    backdrop-filter: blur(6px); color: var(--green); border: 1px solid rgba(88, 196, 112, .35);
+    border-radius: 20px; padding: 3px 12px; font-size: 11px;
+    font-weight: 600; letter-spacing: 1px; display: none; box-shadow: 0 0 18px rgba(88, 196, 112, .2); }
+  #livebadge .livedot { margin-right: 6px; }
+  #followbtn { position: absolute; bottom: 14px; right: 14px; display: none; }
+  /* ---------- edges: light threads ---------- */
+  .edge { fill: none; stroke-width: 1.5; stroke-linecap: round; opacity: .55; }
+  .edge.draw { stroke-dasharray: 1; animation: edgedraw .6s ease-out both; }
+  @keyframes edgedraw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+  .edge.dead { stroke: #4a3138 !important; stroke-dasharray: .04 .03 !important; opacity: .5;
+    animation: none; }
+  /* ---------- nodes: glowing orbs ---------- */
+  .node { cursor: pointer; }
+  .node text.lbl { fill: var(--text); fill-opacity: .62; font-size: 12px;
+    paint-order: stroke; stroke: rgba(5, 9, 14, .85); stroke-width: 3px;
+    transition: fill-opacity .25s; }
+  .node:hover text.lbl, .node.sel text.lbl, .node.tip text.lbl { fill-opacity: 1; }
+  .node .glow { transition: opacity .4s; }
+  .node:hover .glow { opacity: .9; }
+  .node.dead text.lbl { fill: var(--faint); }
+  .node.dead .glow { opacity: .12; }
+  .node.dead .core { opacity: .5; animation: ember 2.2s ease-out both; }
+  @keyframes ember {
+    0% { opacity: .95; } 25% { opacity: .4; } 40% { opacity: .75; }
+    60% { opacity: .35; } 75% { opacity: .55; } 100% { opacity: .5; }
+  }
+  .node.sel .ring { opacity: 1; }
+  .ring { fill: none; stroke: #fff; stroke-width: 1.2; opacity: 0; transition: opacity .2s; }
+  .node .halo { fill: none; stroke-width: 2; opacity: 0; }
+  .node.active .halo { opacity: 1; animation: halo 1.6s ease-out infinite; }
+  @keyframes halo { from { stroke-opacity: .9; r: 9; } to { stroke-opacity: 0; r: 22; } }
+  .node.active .core { animation: breathe 1.6s ease-in-out infinite; transform-box: fill-box;
+    transform-origin: center; }
+  @keyframes breathe { 50% { transform: scale(1.18); } }
+  .enter { animation: bloom .5s cubic-bezier(.2, .9, .3, 1.35); transform-box: fill-box;
+    transform-origin: center; }
+  @keyframes bloom { from { transform: scale(0); opacity: 0; } }
+  .badge { font-size: 10px; }
+  /* prompt nodes: user avatar + chat bubble that types itself out */
+  .node.prompt .avatar { fill: var(--amber); }
+  .node.prompt .core { fill: #201808; stroke: var(--amber); stroke-width: 1.4; }
+  .node.prompt text.lbl { fill-opacity: .95; }
+  .bubble { fill: rgba(232, 176, 75, .07); stroke: rgba(232, 176, 75, .3); stroke-width: 1; }
+  .node.dead .bubble { stroke: rgba(138, 151, 163, .2); fill: rgba(138, 151, 163, .04); }
+  .spark { animation: sparkle 1s ease-in-out 3; transform-box: fill-box; transform-origin: center; }
+  @keyframes sparkle { 50% { opacity: .35; } }
+  /* ---------- detail: frosted-glass card ---------- */
+  #detail { position: absolute; top: 14px; right: 14px; width: 380px; max-width: 55%;
+    max-height: calc(100% - 28px); background: rgba(15, 22, 31, .68);
+    backdrop-filter: blur(16px) saturate(1.2); border: 1px solid var(--border);
+    border-radius: 14px; box-shadow: 0 12px 40px rgba(0, 0, 0, .5), 0 0 0 1px rgba(255,255,255,.03) inset;
+    display: none; flex-direction: column; overflow: hidden;
+    transform-origin: top right; }
+  #detail.open { display: flex; animation: cardbloom .28s cubic-bezier(.2, .9, .3, 1.2); }
+  @keyframes cardbloom { from { transform: scale(.92); opacity: 0; } }
+  #detail .accent { height: 2px; flex: none; opacity: .8; }
+  #detail header { padding: 12px 14px; border-bottom: 1px solid var(--border); flex: none; }
+  #detail header .type { font-size: 10.5px; font-weight: 700; letter-spacing: 1px;
+    text-transform: uppercase; }
+  #detail header .lbl { margin-top: 4px; font-size: 13px; }
+  #detail header .meta { margin-top: 4px; color: var(--dim); font-size: 11px; }
+  #detail pre { overflow: auto; padding: 12px 14px; font: 11.5px/1.5 ui-monospace, monospace;
+    white-space: pre-wrap; word-break: break-word; color: #b9c5d0; }
+  #detail .close { position: absolute; top: 8px; right: 10px; background: none; border: none;
+    color: var(--dim); font-size: 16px; cursor: pointer; }
+  #detail .close:hover { color: var(--text); }
+  /* ---------- controls ---------- */
+  #controls { grid-area: controls; background: var(--panel); backdrop-filter: blur(10px);
+    border-top: 1px solid var(--border);
+    display: flex; align-items: center; gap: 10px; padding: 8px 14px; }
+  button { background: var(--panel2); color: var(--text); border: 1px solid var(--border);
+    border-radius: 8px; padding: 4px 10px; cursor: pointer; font-size: 12px;
+    transition: border-color .2s, box-shadow .2s; }
+  button:hover { border-color: var(--dim); box-shadow: 0 0 10px rgba(120, 200, 180, .12); }
+  button.primary { background: rgba(29, 58, 78, .8); border-color: #2c5875; }
+  #scrub { flex: 1; accent-color: var(--teal); }
+  #pos { color: var(--dim); font-size: 11px; min-width: 90px; text-align: right;
+    font-variant-numeric: tabular-nums; }
+  select { background: var(--panel2); color: var(--text); border: 1px solid var(--border);
+    border-radius: 8px; padding: 3px 6px; font-size: 12px; }
+</style>
+</head>
+<body>
+<aside id="sidebar">
+  <h1>agent<span>·</span>trail</h1>
+  <div class="sub">reasoning trails, live &amp; replayable</div><div class="sub" style="border-bottom:none;padding-top:8px"><a href="https://github.com/sudhanshutech/agent-trail" style="color:var(--teal);text-decoration:none">github.com/sudhanshutech/agent-trail</a></div>
+  <div id="sessions"></div>
+  <div id="legend"></div>
+</aside>
+
+<div id="main">
+  <svg id="canvas"><g id="world"></g></svg>
+  <div id="empty">select a session on the left<br><small>drop trail files in ./trails/</small></div>
+  <div id="livebadge"><span class="livedot"></span>LIVE</div>
+  <button id="followbtn" class="primary">follow tip ↓</button>
+  <div id="detail">
+    <div class="accent" id="d-accent"></div>
+    <button class="close" onclick="closeDetail()">✕</button>
+    <header><div class="type" id="d-type"></div><div class="lbl" id="d-label"></div>
+      <div class="meta" id="d-meta"></div></header>
+    <pre id="d-detail"></pre>
+  </div>
+</div>
+
+<div id="controls">
+  <button id="stepb" title="step back (←)">⏮</button>
+  <button id="playb" title="play/pause (space)">▶</button>
+  <button id="stepf" title="step forward (→)">⏭</button>
+  <select id="speed">
+    <option value="0.5">0.5×</option><option value="1" selected>1×</option>
+    <option value="2">2×</option><option value="4">4×</option>
+    <option value="8">8×</option><option value="0">instant</option>
+  </select>
+  <input type="range" id="scrub" min="0" max="0" value="0">
+  <div id="pos">0 / 0</div>
+</div>
+
+<script>
+/* Static demo shim: serve bundled events through the same fetch/EventSource
+   surface the server provides, so the unmodified viewer works from a file. */
+const EMBED = {"demo.trail.jsonl": [{"id": "meta", "parent_id": null, "timestamp": "2026-07-06T10:00:00.000Z", "type": "session", "label": "demo: fix failing auth test", "detail": "Hand-written sample session demonstrating branching, failure, backtrack and convergence.", "status": "success"}, {"id": "n1", "parent_id": null, "timestamp": "2026-07-06T10:00:01.000Z", "type": "prompt", "label": "Fix the failing test in the auth module", "detail": "Fix the failing test in the auth module. `pytest tests/test_auth.py` fails on test_token_refresh. Don't change the test itself.", "status": "success"}, {"id": "n2", "parent_id": "n1", "timestamp": "2026-07-06T10:00:04.000Z", "type": "thought", "label": "Run the test first to see the actual failure", "detail": "I should reproduce the failure before reading any code. Running the single failing test with -x to get the traceback.", "status": "success"}, {"id": "n3", "parent_id": "n2", "timestamp": "2026-07-06T10:00:06.000Z", "type": "tool_call", "label": "Bash: pytest tests/test_auth.py::test_token_refresh -x", "detail": "$ pytest tests/test_auth.py::test_token_refresh -x", "status": "success"}, {"id": "n4", "parent_id": "n3", "timestamp": "2026-07-06T10:00:11.000Z", "type": "tool_result", "label": "FAILED: AssertionError: token not refreshed", "detail": "E  AssertionError: assert new_token != old_token\nE  refresh_token() returned the same token when expiry was within skew window\ntests/test_auth.py:88: AssertionError", "status": "failed"}, {"id": "n5", "parent_id": "n4", "timestamp": "2026-07-06T10:00:15.000Z", "type": "thought", "label": "Token not rotating near expiry: inspect refresh logic + config in parallel", "detail": "The refresh path returns a cached token when expiry is within the skew window. Need to see refresh_token() and the skew config. Reading both files in parallel.", "status": "success"}, {"id": "n6", "parent_id": "n5", "timestamp": "2026-07-06T10:00:17.000Z", "type": "file_read", "label": "Read auth/refresh.py", "detail": "Read auth/refresh.py (214 lines)", "status": "success"}, {"id": "n7", "parent_id": "n5", "timestamp": "2026-07-06T10:00:17.500Z", "type": "file_read", "label": "Read auth/config.py", "detail": "Read auth/config.py (61 lines)", "status": "success"}, {"id": "n8", "parent_id": "n6", "timestamp": "2026-07-06T10:00:24.000Z", "type": "thought", "label": "Suspect: cache check happens before skew check", "detail": "refresh_token() consults the in-memory cache before evaluating expiry skew. Two candidate fixes: (a) reorder the checks, (b) invalidate cache entry when within skew. Trying (a) first: smaller diff.", "status": "success"}, {"id": "n9", "parent_id": "n8", "timestamp": "2026-07-06T10:00:28.000Z", "type": "file_write", "label": "Edit auth/refresh.py: reorder cache/skew checks", "detail": "Moved `if within_skew(token):` above the cache lookup so near-expiry tokens bypass the cache.", "status": "success"}, {"id": "n10", "parent_id": "n9", "timestamp": "2026-07-06T10:00:31.000Z", "type": "tool_call", "label": "Bash: pytest tests/test_auth.py -x", "detail": "$ pytest tests/test_auth.py -x", "status": "success"}, {"id": "n11", "parent_id": "n10", "timestamp": "2026-07-06T10:00:37.000Z", "type": "tool_result", "label": "FAILED: 3 other tests now break (cache never hit)", "detail": "FAILED tests/test_auth.py::test_cached_token_reused\nFAILED tests/test_auth.py::test_no_network_when_fresh\nFAILED tests/test_auth.py::test_rate_limit_respected\nReordering made every call skip the cache when skew=0 default.", "status": "failed"}, {"id": "n12", "parent_id": "n11", "timestamp": "2026-07-06T10:00:42.000Z", "type": "backtrack", "label": "Reordering breaks caching: revert, try invalidation instead", "detail": "Approach (a) is wrong: the reorder bypasses the cache for all tokens because within_skew() treats skew=0 as always-true. Reverting and switching to approach (b): keep check order, but explicitly invalidate the cache entry when the token is inside the skew window.", "status": "failed"}, {"id": "n13", "parent_id": "n12", "timestamp": "2026-07-06T10:00:44.000Z", "type": "file_write", "label": "Edit auth/refresh.py: revert reorder", "detail": "Restored original check order in refresh_token().", "status": "success"}, {"id": "n14", "parent_id": "n8", "timestamp": "2026-07-06T10:00:50.000Z", "type": "thought", "label": "Approach (b): invalidate cache inside skew window", "detail": "Keep the cache lookup first, but before returning a cached token verify it is not within the skew window; if it is, drop it from the cache and fall through to a real refresh. Also fix within_skew() to return False when skew=0.", "status": "success"}, {"id": "n15", "parent_id": "n14", "timestamp": "2026-07-06T10:00:54.000Z", "type": "file_read", "label": "Read auth/cache.py", "detail": "Read auth/cache.py (90 lines): confirm invalidate() exists and is threadsafe.", "status": "success"}, {"id": "n16", "parent_id": "n15", "timestamp": "2026-07-06T10:00:59.000Z", "type": "file_write", "label": "Edit auth/refresh.py: invalidate near-expiry cache entries", "detail": "if cached and within_skew(cached):\n    cache.invalidate(key)\n    cached = None", "status": "success"}, {"id": "n17", "parent_id": "n16", "timestamp": "2026-07-06T10:01:01.000Z", "type": "file_write", "label": "Edit auth/refresh.py: within_skew(skew=0) returns False", "detail": "Guard clause: `if skew <= 0: return False` so default config never treats fresh tokens as expiring.", "status": "success"}, {"id": "n18", "parent_id": "n17", "timestamp": "2026-07-06T10:01:04.000Z", "type": "tool_call", "label": "Bash: pytest tests/test_auth.py", "detail": "$ pytest tests/test_auth.py", "status": "success"}, {"id": "n19", "parent_id": "n18", "timestamp": "2026-07-06T10:01:12.000Z", "type": "tool_result", "label": "12 passed in 6.4s", "detail": "============ 12 passed in 6.41s ============", "status": "success"}, {"id": "n20", "parent_id": "n19", "timestamp": "2026-07-06T10:01:15.000Z", "type": "decision", "label": "Converged: cache invalidation fix, full suite green", "detail": "Settled on approach (b) after (a) broke cache-dependent tests. Running the wider suite once to be safe.", "status": "success"}, {"id": "n21", "parent_id": "n20", "timestamp": "2026-07-06T10:01:17.000Z", "type": "tool_call", "label": "Bash: pytest tests/ -q", "detail": "$ pytest tests/ -q", "status": "success"}, {"id": "n22", "parent_id": "n21", "timestamp": "2026-07-06T10:01:39.000Z", "type": "tool_result", "label": "148 passed, 2 skipped", "detail": "148 passed, 2 skipped in 21.8s", "status": "success"}, {"id": "n23", "parent_id": "n22", "timestamp": "2026-07-06T10:01:45.000Z", "type": "text", "label": "Fixed: near-expiry tokens were served from cache", "detail": "The bug: refresh_token() returned cached tokens even when they were inside the expiry skew window. Fix: invalidate the cache entry when a cached token is within skew, plus a guard so skew=0 never matches. First attempt (reordering the checks) was reverted because it bypassed the cache entirely. Full suite: 148 passed.", "status": "success"}], "health-endpoint.trail.jsonl": [{"id": "session", "parent_id": null, "timestamp": null, "type": "session", "label": "Fixture: add a health endpoint", "detail": "Fixture: add a health endpoint", "status": "success"}, {"id": "u1", "parent_id": null, "timestamp": "2026-01-01T00:00:00Z", "type": "prompt", "label": "add a health endpoint to the api", "detail": "add a health endpoint to the api", "status": "success"}, {"id": "a1:0", "parent_id": "u1", "timestamp": "2026-01-01T00:00:05Z", "type": "thought", "label": "I should find the router file and read the server entrypoint in paralle\u2026", "detail": "I should find the router file and read the server entrypoint in parallel.", "status": "success"}, {"id": "tu1", "parent_id": "a1:0", "timestamp": "2026-01-01T00:00:05Z", "type": "file_read", "label": "Grep: add_route", "detail": "Grep\n{\n  \"pattern\": \"add_route\"\n}", "status": "active"}, {"id": "tu2", "parent_id": "a1:0", "timestamp": "2026-01-01T00:00:05Z", "type": "file_read", "label": "Read: server.py", "detail": "Read\n{\n  \"file_path\": \"app/server.py\"\n}", "status": "active"}, {"id": "u2:0", "parent_id": "tu1", "timestamp": "2026-01-01T00:00:08Z", "type": "tool_result", "label": "app/routes.py:12", "detail": "app/routes.py:12", "status": "success"}, {"id": "u2:1", "parent_id": "tu2", "timestamp": "2026-01-01T00:00:08Z", "type": "tool_result", "label": "from routes import router app.include(router)", "detail": "from routes import router\napp.include(router)", "status": "success"}, {"id": "tu3", "parent_id": "u2:1", "timestamp": "2026-01-01T00:00:12Z", "type": "file_write", "label": "Edit: routes.py", "detail": "Edit\n{\n  \"file_path\": \"app/routes.py\",\n  \"old_string\": \"x\",\n  \"new_string\": \"y\"\n}", "status": "active"}, {"id": "u3:0", "parent_id": "tu3", "timestamp": "2026-01-01T00:00:14Z", "type": "tool_result", "label": "edited", "detail": "edited", "status": "success"}, {"id": "tu4", "parent_id": "u3:0", "timestamp": "2026-01-01T00:00:16Z", "type": "tool_call", "label": "Bash: Run the test suite", "detail": "Bash\n{\n  \"command\": \"pytest -q\",\n  \"description\": \"Run the test suite\"\n}", "status": "active"}, {"id": "u4:0", "parent_id": "tu4", "timestamp": "2026-01-01T00:00:24Z", "type": "error", "label": "1 failed: test_health expects 200", "detail": "1 failed: test_health expects 200", "status": "failed"}, {"id": "a4:0", "parent_id": "u4:0", "timestamp": "2026-01-01T00:00:30Z", "type": "thought", "label": "The route returns 204, the test wants 200. Fix the status code.", "detail": "The route returns 204, the test wants 200. Fix the status code.", "status": "success"}, {"id": "tu5", "parent_id": "a4:0", "timestamp": "2026-01-01T00:00:30Z", "type": "file_write", "label": "Edit: routes.py", "detail": "Edit\n{\n  \"file_path\": \"app/routes.py\",\n  \"old_string\": \"204\",\n  \"new_string\": \"200\"\n}", "status": "active"}, {"id": "u5:0", "parent_id": "tu5", "timestamp": "2026-01-01T00:00:32Z", "type": "tool_result", "label": "edited", "detail": "edited", "status": "success"}, {"id": "a5:0", "parent_id": "u5:0", "timestamp": "2026-01-01T00:00:40Z", "type": "text", "label": "Health endpoint added and the suite passes.", "detail": "Health endpoint added and the suite passes.", "status": "success"}]};
+window.EventSource = class {
+  constructor(url) {
+    const name = decodeURIComponent(url.split("/").pop());
+    setTimeout(() => {
+      for (const ev of EMBED[name] || []) this.onmessage && this.onmessage({ data: JSON.stringify(ev) });
+    }, 0);
+  }
+  close() {}
+};
+window.fetch = async (url) => {
+  if (String(url).endsWith("/api/sessions"))
+    return { ok: true, json: async () => Object.keys(EMBED).map((n) => (
+      { name: n, size: JSON.stringify(EMBED[n]).length, mtime: 1751800000, live: false })) };
+  return { ok: false, json: async () => ({}) };
+};
+</script>
+<script>
+"use strict";
+/* ============================== constants ============================== */
+const ROW_H = 36, LANE_W = 48, PAD_X = 60, PAD_Y = 40, R = 6.5;
+const TYPE_COLOR = {
+  session: "#ffffff", prompt: "#e8b04b", thought: "#b58cf0",
+  text: "#6cb2f5", tool_call: "#45c4a4", tool_result: "#8a97a3",
+  file_read: "#7fd0e8", file_write: "#f0954f", decision: "#58c470",
+  backtrack: "#e86a6a", error: "#e86a6a",
+};
+const TYPE_ICON = { prompt: "❯", thought: "◆", decision: "✓", backtrack: "↩", error: "✕" };
+
+function lighten(hex, amt) {
+  const n = parseInt(hex.slice(1), 16);
+  const mix = (c) => Math.round(c + (255 - c) * amt);
+  return `rgb(${mix(n >> 16 & 255)},${mix(n >> 8 & 255)},${mix(n & 255)})`;
+}
+
+/* ============================== state ============================== */
+let events = [];          // all events received, in arrival order
+let shown = 0;            // how many events are currently rendered (replay cursor)
+let nodes = new Map();    // id -> node record {ev, lane, row, children:[], el, edgeEl}
+let maxLane = 0, rowCount = 0;
+let selected = null;
+let es = null;            // EventSource
+let currentSession = null;
+let playing = false, playTimer = null;
+let follow = true;        // auto-scroll to tip while at end
+let sessionTitle = "";
+
+const svg = document.getElementById("canvas");
+const world = document.getElementById("world");
+const view = { x: 40, y: 20, k: 1 };
+
+/* ============================== svg defs: glows + orb gradients ============================== */
+{
+  const defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
+  let inner = `
+    <filter id="soft" x="-150%" y="-150%" width="400%" height="400%">
+      <feGaussianBlur stdDeviation="3.5"/>
+    </filter>
+    <filter id="wisp" x="-100%" y="-100%" width="300%" height="300%">
+      <feGaussianBlur stdDeviation="1.1"/>
+    </filter>`;
+  for (const [t, c] of Object.entries(TYPE_COLOR)) {
+    inner += `
+    <radialGradient id="orb-${t}" cx="38%" cy="34%" r="75%">
+      <stop offset="0%" stop-color="${lighten(c, .75)}"/>
+      <stop offset="55%" stop-color="${c}"/>
+      <stop offset="100%" stop-color="${c}" stop-opacity=".85"/>
+    </radialGradient>`;
+  }
+  defs.innerHTML = inner;
+  svg.insertBefore(defs, world);
+}
+
+/* fireflies drifting in the background */
+{
+  const main = document.getElementById("main");
+  for (let i = 0; i < 14; i++) {
+    const f = document.createElement("div");
+    f.className = "firefly";
+    f.style.left = (5 + (i * 137) % 90) + "%";
+    f.style.top = (8 + (i * 71) % 84) + "%";
+    f.style.animationDuration = (7 + (i * 3) % 9) + "s";
+    f.style.animationDelay = -((i * 13) % 10) + "s";
+    main.insertBefore(f, main.firstChild);
+  }
+}
+
+/* ============================== sessions list ============================== */
+async function loadSessions() {
+  const res = await fetch("/api/sessions");
+  const list = await res.json();
+  const el = document.getElementById("sessions");
+  el.innerHTML = "";
+  for (const s of list) {
+    const d = document.createElement("div");
+    d.className = "sess" + (s.name === currentSession ? " sel" : "");
+    const when = new Date(s.mtime * 1000).toLocaleString([], {month:"short", day:"numeric", hour:"2-digit", minute:"2-digit"});
+    d.innerHTML = `<div class="name">${s.name.replace(/\.trail\.jsonl$|\.jsonl$/, "")}</div>
+      <div class="meta">${s.live ? '<span class="livedot"></span>live' : when} · ${(s.size/1024).toFixed(1)}kb</div>`;
+    d.onclick = () => openSession(s.name);
+    el.appendChild(d);
+  }
+  if (!list.length) el.innerHTML = '<div style="padding:14px;color:var(--faint);font-size:12px">no trails yet. run a capture script (see README)</div>';
+}
+loadSessions();
+setInterval(loadSessions, 5000);
+
+/* ============================== session open / SSE ============================== */
+function openSession(name) {
+  if (es) { es.close(); es = null; }
+  currentSession = name;
+  location.hash = "s=" + encodeURIComponent(name);
+  events = []; shown = 0; sessionTitle = "";
+  resetGraph();
+  closeDetail();
+  document.getElementById("empty").style.display = "none";
+  loadSessions();
+  // SSE replays the whole file first, then streams appends: one path for live and finished.
+  es = new EventSource("/api/stream/" + encodeURIComponent(name));
+  es.onmessage = (m) => {
+    let ev; try { ev = JSON.parse(m.data); } catch { return; }
+    if (ev.type === "session") { sessionTitle = ev.label; return; }
+    const atEnd = shown === events.length;
+    events.push(ev);
+    if (atEnd && !playing) advanceTo(events.length);   // follow the tip
+    updateScrub();
+  };
+}
+
+/* ============================== graph model + layout ============================== */
+let typeTimers = new Set();
+function resetGraph() {
+  nodes = new Map(); maxLane = 0; rowCount = 0; selected = null;
+  typeTimers.forEach(clearInterval); typeTimers.clear();
+  world.innerHTML = "";
+  world.appendChild(mk("g", {id:"edges"}));
+  world.appendChild(mk("g", {id:"nodes"}));
+  setLive(false);
+}
+
+function mk(tag, attrs) {
+  const el = document.createElementNS("http://www.w3.org/2000/svg", tag);
+  for (const k in attrs) el.setAttribute(k, attrs[k]);
+  return el;
+}
+
+function addNode(ev) {
+  if (nodes.has(ev.id)) return;                 // idempotent on replays
+  const parent = ev.parent_id ? nodes.get(ev.parent_id) : null;
+  let lane;
+  if (!parent) lane = 0;
+  else if (parent.children.length === 0) lane = parent.lane;   // continue the branch
+  else lane = ++maxLane;                                        // fork right
+  maxLane = Math.max(maxLane, lane);
+  const n = { ev, lane, row: rowCount++, children: [], parent, dead: false, converge: false };
+  nodes.set(ev.id, n);
+  if (parent) parent.children.push(n);
+  deriveFlags(n);
+  drawNode(n);
+  if (follow && shown >= events.length - 1) scrollTo(n);
+}
+
+/* status, dead-branch and convergence derivation. capture stays append-only */
+function deriveFlags(n) {
+  const p = n.parent;
+  // tool result closes its call
+  if (p && (n.ev.type === "tool_result" || n.ev.type === "error") && p.ev.status === "active") {
+    p.ev.status = n.ev.type === "error" ? "failed" : "success";
+    if (p.el) styleNode(p);
+  }
+  // previous tip is no longer active
+  if (p && p.ev.status === "active" && !["tool_call","file_read","file_write"].includes(p.ev.type)) {
+    p.ev.status = "success"; if (p.el) styleNode(p);
+  }
+  // A new sibling at an existing fork means the agent went back up the tree.
+  // Any older sibling subtree containing a failure/backtrack was an abandoned
+  // attempt: gray it out and badge the new branch as the pivot/convergence.
+  // (Parallel tool fan-outs are safe: siblings arrive before any failure exists.)
+  if (p && p.children.length > 1) {
+    const older = p.children.slice(0, -1).filter(c => !c.dead && containsFailure(c));
+    if (older.length) {
+      n.converge = true;
+      older.forEach(c => markDead(c));
+    }
+  }
+}
+function containsFailure(n) {
+  return n.ev.status === "failed" || n.ev.type === "backtrack" || n.ev.type === "error" ||
+         n.children.some(containsFailure);
+}
+function markDead(n) {
+  n.dead = true; if (n.el) styleNode(n);
+  n.children.forEach(markDead);
+}
+
+function xy(n) { return [PAD_X + n.lane * LANE_W, PAD_Y + n.row * ROW_H]; }
+
+function drawNode(n) {
+  const [x, y] = xy(n);
+  const color = TYPE_COLOR[n.ev.type] || TYPE_COLOR.tool_result;
+  if (n.parent) {
+    const [px, py] = xy(n.parent);
+    const dy = y - py, dx = x - px;
+    // organic light-thread: lean the curve sideways on forks
+    const d = dx === 0
+      ? `M ${px} ${py} C ${px} ${py + dy * .45}, ${x} ${y - dy * .45}, ${x} ${y}`
+      : `M ${px} ${py} C ${px + dx * .12} ${py + dy * .7}, ${x - dx * .25} ${y - dy * .55}, ${x} ${y}`;
+    n.edgeEl = mk("path", { d, class: "edge draw", pathLength: 1, stroke: color,
+      filter: "url(#wisp)" });
+    document.getElementById("edges").appendChild(n.edgeEl);
+  }
+  const isPrompt = n.ev.type === "prompt";
+  const g = mk("g", { class: "node enter" + (isPrompt ? " prompt" : ""), transform: `translate(${x},${y})` });
+  const nodeR = isPrompt ? R + 2.5 : R;
+  // bioluminescent bloom behind the orb
+  const glow = mk("circle", { class: "glow", r: nodeR + 5, fill: color, opacity: .45,
+    filter: "url(#soft)" });
+  g.appendChild(glow);
+  g.appendChild(mk("circle", { class: "halo", r: nodeR + 3, stroke: color }));
+  g.appendChild(mk("circle", { class: "ring", r: nodeR + 3.5 }));
+  g.appendChild(mk("circle", { class: "core", r: nodeR, fill: `url(#orb-${n.ev.type in TYPE_COLOR ? n.ev.type : "tool_result"})` }));
+  if (isPrompt) {
+    // user avatar: head + shoulders inside the ring
+    g.appendChild(mk("circle", { class: "avatar", cy: -2.4, r: 2.2 }));
+    g.appendChild(mk("path", { class: "avatar", d: "M -4 4.6 a 4 3.4 0 0 1 8 0 Z" }));
+  } else {
+    const icon = TYPE_ICON[n.ev.type];
+    if (icon) {
+      const t = mk("text", { class: "badge", x: 0, y: 3.2, "text-anchor": "middle" });
+      t.textContent = icon; t.style.fill = "#0a0f14"; t.style.fontWeight = "700";
+      g.appendChild(t);
+    }
+  }
+  const label = mk("text", { class: "lbl", x: nodeR + (isPrompt ? 15 : 9), y: 4 });
+  label.textContent = n.ev.label || n.ev.type;
+  g.appendChild(label);
+  if (n.converge) {
+    const c = mk("text", { class: "badge spark", x: -R - 9, y: 4, "text-anchor": "end" });
+    c.textContent = "✧ pivot"; c.style.fill = TYPE_COLOR.decision; c.style.stroke = "none";
+    c.style.textShadow = "0 0 6px " + TYPE_COLOR.decision;
+    g.appendChild(c);
+  }
+  g.addEventListener("click", (e) => { e.stopPropagation(); select(n); });
+  n.el = g;
+  document.getElementById("nodes").appendChild(g);
+  if (isPrompt) chatBubble(g, label, nodeR);
+  styleNode(n);
+  markActive();
+}
+
+/* wrap a prompt label in a chat bubble and type it out like the user did */
+function chatBubble(g, label, nodeR) {
+  const full = label.textContent;
+  const w = label.getComputedTextLength();
+  const bubble = mk("rect", { class: "bubble", x: nodeR + 8, y: -10.5,
+    rx: 10, width: w + 15, height: 21 });
+  g.insertBefore(bubble, label);
+  let i = 0;
+  const step = Math.max(10, Math.min(45, 900 / Math.max(1, full.length)));
+  label.textContent = "▏";
+  const t = setInterval(() => {
+    i++;
+    label.textContent = i < full.length ? full.slice(0, i) + "▏" : full;
+    if (i >= full.length) { clearInterval(t); typeTimers.delete(t); }
+  }, step);
+  typeTimers.add(t);
+}
+
+function styleNode(n) {
+  if (!n.el) return;
+  n.el.classList.toggle("dead", n.dead);
+  n.el.classList.toggle("sel", selected === n);
+  const core = n.el.querySelector(".core");
+  const glow = n.el.querySelector(".glow");
+  if (n.ev.status === "failed") {
+    core.setAttribute("fill", "url(#orb-error)");
+    glow.setAttribute("fill", TYPE_COLOR.error);
+  }
+  if (n.edgeEl) n.edgeEl.classList.toggle("dead", n.dead);
+}
+
+let activeNode = null;
+function markActive() {
+  // the chronologically newest visible node pulses while the session is live
+  if (activeNode?.el) { activeNode.el.classList.remove("active", "tip"); }
+  let newest = null;
+  for (const n of nodes.values()) if (!newest || n.row > newest.row) newest = n;
+  activeNode = newest;
+  if (newest) {
+    newest.el.classList.add("tip");
+    if (isLiveTip()) newest.el.classList.add("active");
+  }
+}
+function isLiveTip() { return shown === events.length && liveNow; }
+
+let liveNow = false;
+function setLive(v) {
+  liveNow = v;
+  document.getElementById("livebadge").style.display = v ? "block" : "none";
+  markActive();
+}
+setInterval(async () => {
+  if (!currentSession) return;
+  const list = await (await fetch("/api/sessions")).json().catch(() => []);
+  const me = (list || []).find?.(s => s.name === currentSession);
+  setLive(!!me?.live);
+}, 3000);
+
+/* ============================== replay engine ============================== */
+function advanceTo(k) {
+  k = Math.max(0, Math.min(k, events.length));
+  if (k < shown) {                       // rewind = rebuild (cheap: pure projection)
+    resetGraph(); shown = 0;
+  }
+  while (shown < k) addNode(events[shown++]);
+  updateScrub();
+}
+function updateScrub() {
+  const s = document.getElementById("scrub");
+  s.max = events.length; s.value = shown;
+  document.getElementById("pos").textContent = `${shown} / ${events.length}`;
+}
+document.getElementById("scrub").addEventListener("input", (e) => {
+  pause(); advanceTo(+e.target.value);
+});
+document.getElementById("stepf").onclick = () => { pause(); advanceTo(shown + 1); if (shown) select(nodes.get(events[shown-1].id)); };
+document.getElementById("stepb").onclick = () => { pause(); advanceTo(shown - 1); if (shown) select(nodes.get(events[shown-1].id)); };
+document.getElementById("playb").onclick = () => playing ? pause() : play();
+
+function play() {
+  if (shown >= events.length) advanceTo(0);
+  playing = true;
+  document.getElementById("playb").textContent = "⏸";
+  tick();
+}
+function pause() {
+  playing = false;
+  document.getElementById("playb").textContent = "▶";
+  clearTimeout(playTimer);
+}
+function tick() {
+  if (!playing) return;
+  if (shown >= events.length) { pause(); return; }
+  advanceTo(shown + 1);
+  const speed = +document.getElementById("speed").value;
+  let delay = 120;
+  if (speed > 0 && shown < events.length) {
+    const a = Date.parse(events[shown - 1].timestamp), b = Date.parse(events[shown].timestamp);
+    delay = isFinite(a) && isFinite(b) ? Math.min(1500, Math.max(60, (b - a) / speed)) : 250 / speed;
+  } else if (speed === 0) delay = 25;
+  playTimer = setTimeout(tick, delay);
+}
+window.addEventListener("keydown", (e) => {
+  if (e.target.tagName === "INPUT" || e.target.tagName === "SELECT") return;
+  if (e.key === " ") { e.preventDefault(); playing ? pause() : play(); }
+  if (e.key === "ArrowRight") document.getElementById("stepf").click();
+  if (e.key === "ArrowLeft") document.getElementById("stepb").click();
+});
+
+/* ============================== detail card ============================== */
+function select(n) {
+  if (!n) return;
+  const prev = selected; selected = n;
+  if (prev) styleNode(prev);
+  styleNode(n);
+  const color = TYPE_COLOR[n.ev.type] || TYPE_COLOR.tool_result;
+  document.getElementById("d-accent").style.background =
+    `linear-gradient(90deg, transparent, ${color}, transparent)`;
+  const typeEl = document.getElementById("d-type");
+  typeEl.textContent = (n.ev.type === "prompt" ? "user · prompt" : n.ev.type) +
+    (n.dead ? " · dead branch" : "") + (n.converge ? " · convergence" : "");
+  typeEl.style.color = color;
+  typeEl.style.textShadow = `0 0 10px ${color}55`;
+  document.getElementById("d-label").textContent = n.ev.label || "";
+  document.getElementById("d-meta").textContent =
+    `${n.ev.timestamp ? new Date(n.ev.timestamp).toLocaleTimeString() : ""} · status: ${n.ev.status || "?"} · id ${n.ev.id}`;
+  document.getElementById("d-detail").textContent = n.ev.detail || "(no detail)";
+  document.getElementById("detail").classList.add("open");
+}
+function closeDetail() {
+  document.getElementById("detail").classList.remove("open");
+  const prev = selected; selected = null;
+  if (prev) styleNode(prev);
+}
+
+/* ============================== pan / zoom / follow ============================== */
+function applyView() {
+  world.setAttribute("transform", `translate(${view.x},${view.y}) scale(${view.k})`);
+}
+applyView();
+let panning = false, px = 0, py = 0, moved = false;
+svg.addEventListener("mousedown", (e) => { panning = true; moved = false; px = e.clientX; py = e.clientY; svg.classList.add("panning"); });
+window.addEventListener("mousemove", (e) => {
+  if (!panning) return;
+  const dx = e.clientX - px, dy = e.clientY - py;
+  if (Math.abs(dx) + Math.abs(dy) > 3) { moved = true; follow = false; updateFollowBtn(); }
+  view.x += dx; view.y += dy; px = e.clientX; py = e.clientY; applyView();
+});
+window.addEventListener("mouseup", () => { panning = false; svg.classList.remove("panning"); });
+svg.addEventListener("click", () => { if (!moved) closeDetail(); });
+svg.addEventListener("wheel", (e) => {
+  e.preventDefault();
+  const f = Math.exp(-e.deltaY * 0.0012);
+  const r = svg.getBoundingClientRect();
+  const mx = e.clientX - r.left, my = e.clientY - r.top;
+  view.x = mx - (mx - view.x) * f; view.y = my - (my - view.y) * f;
+  view.k = Math.min(3, Math.max(0.15, view.k * f));
+  applyView();
+}, { passive: false });
+
+function scrollTo(n) {
+  const [x, y] = xy(n);
+  const r = svg.getBoundingClientRect();
+  const ty = y * view.k + view.y;
+  if (ty > r.height - 90 || ty < 40) {
+    view.y = r.height * 0.72 - y * view.k;
+    applyView();
+  }
+}
+const followBtn = document.getElementById("followbtn");
+followBtn.onclick = () => {
+  follow = true; updateFollowBtn();
+  advanceTo(events.length);
+  if (activeNode) scrollTo(activeNode);
+};
+function updateFollowBtn() { followBtn.style.display = follow ? "none" : "block"; }
+
+/* ============================== legend ============================== */
+const legend = document.getElementById("legend");
+for (const [t, c] of Object.entries(TYPE_COLOR)) {
+  if (t === "session") continue;
+  const d = document.createElement("div");
+  d.innerHTML = `<i style="background:${c};color:${c}"></i>${t.replace("_", " ")}`;
+  legend.appendChild(d);
+}
+
+/* deep link: /#s=<trail file> opens that session directly */
+function openFromHash() {
+  const name = new URLSearchParams(location.hash.slice(1)).get("s");
+  if (name && name !== currentSession) openSession(name);
+}
+window.addEventListener("hashchange", openFromHash);
+openFromHash();
+</script>
+</body>
+</html>

@@ -8,11 +8,9 @@ When an agentic coding session runs (Claude Code, or any tool-calling agent), al
 
 agent-trail renders the shape of the run instead. Every thought, tool call, and decision becomes a node in a growing trail. Failed attempts terminate as grayed-out dead branches. The moment the agent gives up on one approach and pivots to another gets a visible badge. You can watch it live while the agent works, or replay a finished session and scrub through it step by step.
 
-```
-prompt - thought - read - edit - test (fails)     <- dead branch, grayed out
-                 \
-                  pivot - read - edit - test (passes) - decision
-```
+![agent-trail replaying a captured session: the agent tries a fix, the branch dies, and it pivots to the approach that passes](docs/demo.gif)
+
+**[Try the live demo in your browser](https://sudhanshutech.github.io/agent-trail/)**: the full viewer with two bundled sessions, replay controls included, no install needed.
 
 ## Quick start
 
